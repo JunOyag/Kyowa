@@ -1,0 +1,26 @@
+{
+  "short_name": "Kyowa",
+  "name": "Kyowa",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "logo_128.png",
+      "type": "image/png",
+      "sizes": "128x128",
+      "purpose": "maskable" 
+    },
+    {
+      "src": "logo2_1024.png",
+      "type": "image/png",
+      "sizes": "1024x1024"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff"
+}
