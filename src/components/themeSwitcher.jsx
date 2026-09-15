@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
+
 const ThemeSwitcher = () => {
     const [theme, setTheme] = useState('');
 
     useEffect(() => {
-        // Check local storage for saved theme
         const savedTheme = localStorage.getItem('theme');
         if (savedTheme) {
-            console.log("Saved theme : " + savedTheme);
             const root = document.getElementsByTagName('html')[0];
             if (savedTheme === 'dark') {
                 root.classList.add('dark');
@@ -15,7 +14,7 @@ const ThemeSwitcher = () => {
             }
             setTheme(savedTheme);
         }
-      }, []);
+    }, []);
 
     const onThemeToggler = () => {
         const root = document.getElementsByTagName('html')[0];
@@ -30,18 +29,16 @@ const ThemeSwitcher = () => {
         localStorage.setItem('theme', newTheme);
     };
 
-
-
     return (
-        <div className="card flex justify-end p-2 mb-4">
-            <button
-                type="button"
-                className="flex border-1 w-2rem h-2rem p-0 align-center justify-center"
-                onClick={onThemeToggler}
-            >
-                <i className={`dark:text-white pi ${theme === 'dark' ? 'pi-sun' : 'pi-moon'}`} />
-            </button>
-        </div>
+        <button
+            type="button"
+            className="theme-toggle"
+            onClick={onThemeToggler}
+            aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+        >
+            <i className={`pi ${theme === 'dark' ? 'pi-sun' : 'pi-moon'}`} />
+        </button>
     );
 };
 

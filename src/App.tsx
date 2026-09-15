@@ -13,6 +13,7 @@ import CarrierFactoryInstance from './service/CarrierFactory.ts';
 import PassPanel from './components/PassPanel.jsx';
 import ImagePanel from './components/ImagePanel.jsx';
 import EditableList from './components/EditableList.tsx';
+import ThemeSwitcher from './components/themeSwitcher';
 import { TaskCancelledError } from './util/Task.ts';
 
 import UiUtils from './util/UiUtils.ts';
@@ -135,13 +136,6 @@ function App() {
   }
 
 
-  /**
-   * Relance un décodage sur l'image courante. Chaque appel arrête et
-   * remplace toute tentative de décodage en cours (via carrierManager.stop()
-   * dans Task.run()) : si une Promise précédente était en attente, elle est
-   * rejetée avec une TaskCancelledError qu'on ignore silencieusement ici,
-   * pour laisser la place au décodage le plus récent.
-   */
   const tryDecode = async (newCred?) => {
     if ((carrierManager === undefined) || (!carrierManager.isFileRead())) {
       return;
@@ -275,7 +269,7 @@ function App() {
 
 
   const onWriteSuccess = (blob: Blob) => {
-    msg("Image write success.");
+    msg("Image saved.");
 
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -286,7 +280,7 @@ function App() {
   }
 
   const onWriteError = (err) => {
-    msg("Image write error (" + err + ").");
+    msg("Couldn't save the image (" + err + ").");
   }
 
   const onAfterWrite = () => {
@@ -387,21 +381,37 @@ function App() {
   }
 
 
-  const getStorLabel = () => {
-    let rate = "";
-    if (storTotalCap > 0) {
-      rate = UiUtils.formatFileSize(storUsedCap) + " / " + UiUtils.formatFileSize(storTotalCap);
-      if (storUsedCap >= storTotalCap) {
-        rate += " ⚠️⚠️⚠️ Not enough space !";
-      } else
-        if (storRateCap > 67) {
-          rate += " ⚠️⚠️ Strong visual alteration"
-        } else
-          if (storRateCap > 33) {
-            rate += " ⚠️ Visual alteration"
-          }
+  const getStorSizeLabel = () => {
+    if (storTotalCap === 0) {
+      return "";
     }
-    return rate;
+    return UiUtils.formatFileSize(storUsedCap) + " / " + UiUtils.formatFileSize(storTotalCap);
+  }
+
+  const getStorWarning = () => {
+    if (storTotalCap === 0) {
+      return "";
+    }
+    if (storUsedCap >= storTotalCap) {
+      return "Not enough space.";
+    }
+    if (storRateCap > 67) {
+      return "Strong visual alteration.";
+    }
+    if (storRateCap > 33) {
+      return "Visual alteration.";
+    }
+    return "";
+  }
+
+  const getStorWarningLevel = () => {
+    if (storUsedCap >= storTotalCap) {
+      return "danger";
+    }
+    if (storRateCap > 33) {
+      return "warning";
+    }
+    return "";
   }
 
   const getStorColor = () => {
@@ -421,49 +431,78 @@ function App() {
 
   return (
     <div className="App">
-      <header className="App-header">
-        <div className='container'>
-          <div className='mainAppItem'>
-            <ImagePanel callback={cbImageInputChanged} />
-          </div>
-          <div className='mainAppItem'>
-            <PassPanel callback={cbPassMasterChanged} initialCredentials={credentials} />
-          </div>
-          <div className='card'>
-            <span>{status}</span>
-            <ProgressBar value={progress} showValue={false} style={{ visibility: (progressVisible ? 'visible' : 'hidden') }}></ProgressBar>
-          </div>
-          <div className='card mainAppItem'>
-            <EditableList listUpdate={cbListUpdate} list={listItems} onTryDecodeItem={tryDecodeItem} />
-          </div>
+      <div className="app-shell">
+        <header className="app-header">
           <div>
-            {(storTotalCap > 0) && (
-              <div style={{ marginBottom: "10px" }}>
-                <span>{getStorLabel()}</span>
-                <ProgressBar value={storRateCap} showValue={false} color={getStorColor()}></ProgressBar>
+            <h1 className="app-title">Kyowa</h1>
+            <p className="app-tagline">Hide files inside an image.</p>
+          </div>
+          <ThemeSwitcher />
+        </header>
+
+        <div className="workflow">
+          <section className="step">
+            <div className="step-marker">
+              <span className="step-index">1</span>
+              <span className="step-thread" />
+            </div>
+            <div className="step-content">
+              <h2 className="step-title">Image</h2>
+              <ImagePanel callback={cbImageInputChanged} />
+            </div>
+          </section>
+
+          <section className="step">
+            <div className="step-marker">
+              <span className="step-index">2</span>
+              <span className="step-thread" />
+            </div>
+            <div className="step-content">
+              <h2 className="step-title">Passphrase</h2>
+              <PassPanel callback={cbPassMasterChanged} initialCredentials={credentials} />
+            </div>
+          </section>
+
+          <section className="step">
+            <div className="step-marker">
+              <span className="step-index">3</span>
+              <span className="step-thread" />
+            </div>
+            <div className="step-content">
+              <h2 className="step-title">Hidden files</h2>
+
+              <div className="status-bar">
+                <span className="status-text">{status}</span>
+                <ProgressBar value={progress} showValue={false} style={{ visibility: (progressVisible ? 'visible' : 'hidden') }}></ProgressBar>
               </div>
-            )}
-          </div>
-          <div className='card linePanel'>
-            <table align='center'>
-              <tbody>
-                <tr>
-                  <td>
-                    <button onClick={handleExport} disabled={!canExport()}>
-                      <i className={canExport() ? "pi pi-spin pi-cog" : "pi pi-cog"} style={{ fontSize: '2rem' }}></i>
-                    </button>
-                  </td>
-                  <td>
-                    <button onClick={handleExport} disabled={!canExport()}>
-                      Process & Download
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+
+              <EditableList listUpdate={cbListUpdate} list={listItems} onTryDecodeItem={tryDecodeItem} />
+
+              {(storTotalCap > 0) && (
+                <div className="capacity">
+                  <div className="capacity-row">
+                    <span className="capacity-label">Storage</span>
+                    <span className="capacity-value">{getStorSizeLabel()}</span>
+                  </div>
+                  <ProgressBar value={storRateCap} showValue={false} color={getStorColor()}></ProgressBar>
+                  {getStorWarning() && (
+                    <p className={`capacity-warning capacity-warning--${getStorWarningLevel()}`}>
+                      {getStorWarning()}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
         </div>
-      </header>
+
+        <div className="actions">
+          <button className="btn-primary" onClick={handleExport} disabled={!canExport()}>
+            {progressVisible && <i className="pi pi-spin pi-cog" style={{ marginRight: '0.5rem' }}></i>}
+            Save image
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

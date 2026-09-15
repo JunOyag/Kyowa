@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FaFileImage } from 'react-icons/fa';
+import { FaFileImage, FaSyncAlt } from 'react-icons/fa';
 
 import CarrierFactoryInstance from '../service/CarrierFactory.ts';
 
@@ -41,52 +41,34 @@ const ImagePanel = ({ callback }) => {
   }
 
   return (
-    <div className='card linePanel'>
-      <table align='center'>
-        <tbody>
-          <tr>
-            <td>
-              <label style={{ cursor: 'pointer' }} title="Click to open an image">
-                <FaFileImage style={{ display: "inline" }} />
-                <input
-                  type="file"
-                  id="imageUpload"
-                  accept={mimeTypes}
-                  style={{ display: 'none' }}
-                  onChange={handleImageChange}
-                />
-              </label>
-            </td>
+    <div className="image-panel">
+      <label className="btn-secondary image-choose-btn" htmlFor="imageUpload">
+        <FaFileImage />
+        {previewUrl ? 'Choose a different image' : 'Choose an image'}
+        <input
+          type="file"
+          id="imageUpload"
+          accept={mimeTypes}
+          style={{ display: 'none' }}
+          onChange={handleImageChange}
+        />
+      </label>
 
-            {previewUrl && (
-              <td>
-                <div>
-                  {/* <h3>Image Preview:</h3> */}
-                  <img
-                    src={previewUrl}
-                    alt="Preview"
-                    title="Click to open an image"
-                    onClick={() => document.getElementById('imageUpload').click()}
-                    style={{ maxWidth: '20%', maxHeight: '10%', borderRadius: '5px', display: "inline", cursor: "pointer" }}
-                  /><br/>
-                  {lastFile && (
-                    lastFile.name
-                  )}
-                </div>
-              </td>
-            )}
-
-            {previewUrl && (
-              <td>
-                <button onClick={callParent} title='Reload'>
-                <i className="pi pi-refresh" style={{ fontSize: '2rem' }}></i>
-                </button>
-              </td>
-            )}
-
-          </tr>
-        </tbody>
-      </table>
+      {previewUrl && (
+        <div className="image-preview">
+          <img
+            src={previewUrl}
+            alt="Selected"
+            className="image-preview-thumb"
+          />
+          <div className="image-preview-info">
+            <span className="image-preview-name">{lastFile && lastFile.name}</span>
+            <button type="button" className="icon-btn" onClick={callParent} title="Reload" aria-label="Reload image">
+              <FaSyncAlt />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
