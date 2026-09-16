@@ -414,19 +414,7 @@ function App() {
     return "";
   }
 
-  const getStorColor = () => {
-    let storCol = "#3B82F6"; // Default blue color
-    if (storTotalCap > 0) {
-      storCol = "#2AD02A"; // Green
-      if (storRateCap > 33) {
-        storCol = "#FFC02A"; // Orange
-      }
-      if (storRateCap > 67) {
-        storCol = "#D08080"; // Red
-      }
-    }
-    return storCol;
-  }
+
 
 
   return (
@@ -478,20 +466,40 @@ function App() {
 
               <EditableList listUpdate={cbListUpdate} list={listItems} onTryDecodeItem={tryDecodeItem} />
 
-              {(storTotalCap > 0) && (
-                <div className="capacity">
-                  <div className="capacity-row">
-                    <span className="capacity-label">Storage</span>
-                    <span className="capacity-value">{getStorSizeLabel()}</span>
-                  </div>
-                  <ProgressBar value={storRateCap} showValue={false} color={getStorColor()}></ProgressBar>
-                  {getStorWarning() && (
-                    <p className={`capacity-warning capacity-warning--${getStorWarningLevel()}`}>
-                      {getStorWarning()}
-                    </p>
-                  )}
-                </div>
-              )}
+             {(storTotalCap > 0) && (
+  <div className="capacity">
+    <div className="capacity-row">
+      <span className="capacity-label">Storage</span>
+      <span className="capacity-value">
+        {getStorSizeLabel()} <span className="capacity-percent">({Math.round(storRateCap)}%)</span>
+      </span>
+    </div>
+
+    <div
+      className="capacity-gauge"
+      role="img"
+      aria-label={`Storage used: ${Math.round(storRateCap)} percent. ${getStorWarning() || 'Safe zone.'}`}
+    >
+      <div className="capacity-gauge-track">
+        <div className="capacity-gauge-zone capacity-gauge-zone--warning" />
+        <div className="capacity-gauge-zone capacity-gauge-zone--danger" />
+        <div className="capacity-gauge-fill" style={{ width: `${Math.min(storRateCap, 100)}%` }} />
+      </div>
+      <div className="capacity-gauge-scale">
+        <span className="capacity-gauge-scale-start">0%</span>
+        <span className="capacity-gauge-scale-mark" style={{ left: '33%' }}>33%</span>
+        <span className="capacity-gauge-scale-mark" style={{ left: '67%' }}>67%</span>
+        <span className="capacity-gauge-scale-end">100%</span>
+      </div>
+    </div>
+
+    {getStorWarning() && (
+      <p className={`capacity-warning capacity-warning--${getStorWarningLevel()}`}>
+        {getStorWarning()}
+      </p>
+    )}
+  </div>
+)}
             </div>
           </section>
         </div>

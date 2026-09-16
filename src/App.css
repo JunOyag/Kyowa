@@ -657,3 +657,86 @@ button {
   font-size: 0.78rem;
   color: var(--color-text-muted);
 }
+
+.file-row-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.collapse-btn {
+  flex: 0 0 auto;
+}
+
+.capacity-value {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.capacity-percent {
+  color: var(--color-text-muted);
+}
+
+.capacity-gauge {
+  margin-top: 0.4rem;
+}
+
+.capacity-gauge-track {
+  position: relative;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.capacity-gauge-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.capacity-gauge-zone--warning {
+  left: 33%;
+  width: 34%;
+  background: var(--color-warning-soft);
+}
+
+.capacity-gauge-zone--danger {
+  left: 67%;
+  width: 33%;
+  background: var(--color-danger-soft);
+}
+
+.capacity-gauge-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--color-text);
+  transition: width 0.2s ease;
+}
+
+.capacity-gauge-scale {
+  position: relative;
+  height: 1rem;
+  margin-top: 0.25rem;
+}
+
+.capacity-gauge-scale span {
+  position: absolute;
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+}
+
+.capacity-gauge-scale-start {
+  left: 0;
+}
+
+.capacity-gauge-scale-end {
+  right: 0;
+}
+
+.capacity-gauge-scale-mark {
+  transform: translateX(-50%);
+}

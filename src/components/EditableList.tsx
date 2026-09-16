@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FaUpload, FaDownload, FaEye, FaTrash, FaTrashRestore, FaEdit, FaPlusCircle } from 'react-icons/fa';
+import { FaUpload, FaDownload, FaEye, FaTrash, FaTrashRestore, FaEdit, FaPlusCircle, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { Password } from 'primereact/password';
 import ItemData from '../model/component/ItemData.ts';
 import UiUtils from '../util/UiUtils.ts';
@@ -7,6 +7,51 @@ import UiUtils from '../util/UiUtils.ts';
 let nbTrashItems = 0;
 
 type SearchMatch = { itemIndex: number; start: number };
+type PendingSelection = { start: number; end: number };
+
+/**
+ * Calcule le scrollTop nécessaire pour rendre visible, au centre du
+ * textarea, la position `index` du texte. Technique du "mirror div" :
+ * on clone la mise en forme du textarea dans un élément invisible, on y
+ * place le texte jusqu'à l'index recherché, et on lit la position verticale
+ * obtenue — seule façon fiable de tenir compte du retour à la ligne
+ * automatique (wrap) avec une police à chasse variable.
+ */
+function computeScrollTopForIndex(textarea: HTMLTextAreaElement, index: number): number {
+  const style = window.getComputedStyle(textarea);
+  const mirror = document.createElement('div');
+  const propsToCopy = [
+    'boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+    'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight',
+    'textTransform', 'wordSpacing'
+  ];
+  propsToCopy.forEach((prop) => {
+    (mirror.style as any)[prop] = (style as any)[prop];
+  });
+  mirror.style.position = 'absolute';
+  mirror.style.visibility = 'hidden';
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.wordWrap = 'break-word';
+  mirror.style.height = 'auto';
+  mirror.style.top = '0';
+  mirror.style.left = '-9999px';
+  document.body.appendChild(mirror);
+
+  const textBefore = textarea.value.substring(0, index);
+  mirror.textContent = textBefore;
+  const marker = document.createElement('span');
+  marker.textContent = textarea.value.substring(index, index + 1) || '.';
+  mirror.appendChild(marker);
+
+  const caretTop = marker.offsetTop;
+  document.body.removeChild(mirror);
+
+  const target = caretTop - (textarea.clientHeight / 2);
+  const maxScroll = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
+  return Math.max(0, Math.min(target, maxScroll));
+}
+
 
 const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
   const [items, setItems] = useState<ItemData[]>(list);
@@ -17,17 +62,57 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
   const [isTryingBulk, setIsTryingBulk] = useState<boolean>(false);
   const [bulkResultMsg, setBulkResultMsg] = useState<string>("");
 
-  // --- Search state ---
+  // --- Repli / dépli des entrées ---
+  const [collapsedUids, setCollapsedUids] = useState<Set<number>>(new Set());
+
+  // --- Recherche ---
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchScopeItemIndex, setSearchScopeItemIndex] = useState<number | null>(null);
   const [currentMatchIndex, setCurrentMatchIndex] = useState<number>(0);
   const [hasNavigated, setHasNavigated] = useState<boolean>(false);
-  const [pendingCursorPos, setPendingCursorPos] = useState<number | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
 
   const replaceItems = (newItems: ItemData[]) => {
-    setItems(newItems);
+    setItems((prevItems) => {
+      // Si l'élément en cours d'édition n'existe plus à la même position
+      // (le tableau a été restructuré, ex. après un nouveau déchiffrement),
+      // on ferme l'éditeur plutôt que de garder un index devenu invalide.
+      if (editingContentIndex !== null) {
+        const prevItem = prevItems[editingContentIndex];
+        const nextItem = newItems[editingContentIndex];
+        const stillSameItem = (prevItem !== undefined) && (nextItem !== undefined) && (prevItem.uid === nextItem.uid);
+        if (!stillSameItem) {
+          setEditingContentIndex(null);
+          setTextEditorValue('');
+        }
+      }
+
+      // Même vérification pour le champ de renommage en cours d'édition.
+      if (editableIndex !== null) {
+        const prevItem = prevItems[editableIndex];
+        const nextItem = newItems[editableIndex];
+        const stillSameItem = (prevItem !== undefined) && (nextItem !== undefined) && (prevItem.uid === nextItem.uid);
+        if (!stillSameItem) {
+          setEditableIndex(null);
+        }
+      }
+
+      return newItems;
+    });
+
+    // Nettoie les entrées repliées dont l'élément a disparu.
+    setCollapsedUids((prev) => {
+      const validUids = new Set(newItems.map((it) => it.uid));
+      const next = new Set<number>();
+      prev.forEach((uid) => {
+        if (validUids.has(uid)) {
+          next.add(uid);
+        }
+      });
+      return next;
+    });
   }
 
   const updateItems = (newItems: ItemData[]) => {
@@ -222,12 +307,6 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
 
   }
 
-  /**
-   * Essaie chaque mot de passe candidat contre tous les fichiers encore
-   * chiffrés, en réutilisant onTryDecodeItem : celle-ci teste le mot de
-   * passe sur tous les items non déchiffrés et ne le recopie dans le champ
-   * de l'item concerné que s'il correspond, avant de déchiffrer.
-   */
   const handleTryBulkPasswords = async () => {
     const candidates = bulkPasswords
       .split('\n')
@@ -252,13 +331,23 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
   const hasEncryptedItems = items.some((it) => (!it.isDecoded()) && (!it.flagDelete));
 
 
-  // --- Search logic ---
+  // --- Repli / dépli ---
 
-  /**
-   * Texte utilisé pour la recherche pour un item donné : si l'item est
-   * actuellement ouvert dans l'éditeur, on cherche dans le texte en cours
-   * de modification (non sauvegardé) plutôt que dans decodedData.
-   */
+  const toggleCollapse = (uid: number) => {
+    setCollapsedUids((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) {
+        next.delete(uid);
+      } else {
+        next.add(uid);
+      }
+      return next;
+    });
+  };
+
+
+  // --- Recherche ---
+
   const getItemSearchText = (index: number, item: ItemData): string => {
     if (index === editingContentIndex) {
       return textEditorValue;
@@ -308,11 +397,12 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
 
   const matches = computeMatches();
   const displayIndex = matches.length === 0 ? 0 : Math.min(currentMatchIndex, matches.length - 1);
+  const matchLength = searchQuery.trim().length;
 
   /**
-   * Ouvre la note visée (si ce n'est pas déjà la note ouverte, sans écraser
-   * un texte en cours de modification) puis positionne le curseur au début
-   * de l'occurrence, sans sélection.
+   * Ouvre la note visée, déplie son entrée et replie toutes les autres
+   * (pour garder la barre de recherche et l'éditeur visibles à l'écran),
+   * puis sélectionne le texte trouvé et fait défiler le contenu jusqu'à lui.
    */
   const jumpToMatch = (matchIdx: number) => {
     const m = matches[matchIdx];
@@ -326,17 +416,26 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
       setTextEditorValue(text);
       setEditingContentIndex(m.itemIndex);
     }
-    setPendingCursorPos(m.start);
+
+    setCollapsedUids(new Set(items.filter((it) => it.uid !== item.uid).map((it) => it.uid)));
+
+    setPendingSelection({ start: m.start, end: m.start + matchLength });
   };
 
   useEffect(() => {
-    if ((pendingCursorPos !== null) && (textareaRef.current !== null)) {
-      const pos = Math.min(pendingCursorPos, textareaRef.current.value.length);
-      textareaRef.current.focus();
-      textareaRef.current.setSelectionRange(pos, pos);
-      setPendingCursorPos(null);
+    if ((pendingSelection !== null) && (textareaRef.current !== null)) {
+      const ta = textareaRef.current;
+      const maxLen = ta.value.length;
+      const start = Math.min(pendingSelection.start, maxLen);
+      const end = Math.min(pendingSelection.end, maxLen);
+
+      ta.focus();
+      ta.setSelectionRange(start, end);
+      ta.scrollTop = computeScrollTopForIndex(ta, start);
+
+      setPendingSelection(null);
     }
-  }, [pendingCursorPos, editingContentIndex, textEditorValue]);
+  }, [pendingSelection, editingContentIndex, textEditorValue]);
 
   const handleSearchQueryChange = (value: string) => {
     const wasEmpty = searchQuery.trim().length === 0;
@@ -504,137 +603,154 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
       )}
 
       <div className="file-list">
-        {items.map((item, index) => (
-          <div key={index} className={item.flagDelete ? 'file-row file-row--trash' : 'file-row'}>
+        {items.map((item, index) => {
+          const isCollapsed = collapsedUids.has(item.uid);
+          return (
+            <div key={index} className={item.flagDelete ? 'file-row file-row--trash' : 'file-row'}>
 
-            <div className="file-row-main">
-              <div className="file-badges">
-                {item.flagDelete ? (
-                  <span className="badge badge--trash">In trash</span>
-                ) : (
-                  <>
-                    {item.flagNew && <span className="badge badge--new">New</span>}
-                    {!item.isDecoded() && <span className="badge badge--locked">Encrypted</span>}
-                  </>
-                )}
+              <div className="file-row-header">
+                <div className="file-row-main">
+                  <div className="file-badges">
+                    {item.flagDelete ? (
+                      <span className="badge badge--trash">In trash</span>
+                    ) : (
+                      <>
+                        {item.flagNew && <span className="badge badge--new">New</span>}
+                        {!item.isDecoded() && <span className="badge badge--locked">Encrypted</span>}
+                      </>
+                    )}
+                  </div>
+
+                  <div className="file-name">
+                    {(editableIndex === index) && (item.isDecoded()) ? (
+                      <input
+                        type="text"
+                        className="file-name-input"
+                        value={item.name}
+                        onChange={(e) => handleNameChange(index, e.target.value)}
+                        onBlur={handleNameBlur}
+                        autoFocus
+                      />
+                    ) : (item.isDecoded()) ? (
+                      <button
+                        type="button"
+                        className="file-name-btn"
+                        onClick={() => handleNameClick(index)}
+                        title={item.name}
+                      >
+                        {getItemName(item)}
+                      </button>
+                    ) : (
+                      <span className="file-name-locked">Encrypted item</span>
+                    )}
+                    <span className="file-meta data">{getItemLabel(item)}</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="icon-btn collapse-btn"
+                  onClick={() => toggleCollapse(item.uid)}
+                  aria-label={isCollapsed ? 'Expand item' : 'Collapse item'}
+                  title={isCollapsed ? 'Expand' : 'Collapse'}
+                >
+                  {isCollapsed ? <FaChevronDown /> : <FaChevronUp />}
+                </button>
               </div>
 
-              <div className="file-name">
-                {(editableIndex === index) && (item.isDecoded()) ? (
-                  <input
-                    type="text"
-                    className="file-name-input"
-                    value={item.name}
-                    onChange={(e) => handleNameChange(index, e.target.value)}
-                    onBlur={handleNameBlur}
-                    autoFocus
-                  />
-                ) : (item.isDecoded()) ? (
-                  <button
-                    type="button"
-                    className="file-name-btn"
-                    onClick={() => handleNameClick(index)}
-                    title={item.name}
-                  >
-                    {getItemName(item)}
-                  </button>
-                ) : (
-                  <span className="file-name-locked">Encrypted item</span>
-                )}
-                <span className="file-meta data">{getItemLabel(item)}</span>
-              </div>
+              {!isCollapsed && (
+                <div className="file-row-actions">
+                  <div className="file-pass">
+                    <Password
+                      value={item.pass}
+                      onChange={(e) => handlePassChange(index, e.target.value)}
+                      toggleMask
+                      feedback={false}
+                    />
+                  </div>
+
+                  <div className="file-buttons">
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      disabled={!item.isDecoded()}
+                      onClick={() => document.getElementById("itemUpload" + index)?.click()}
+                      title="Attach file"
+                      aria-label="Attach file"
+                    >
+                      <FaUpload />
+                      <input
+                        id={"itemUpload" + index}
+                        type="file"
+                        style={{ display: 'none' }}
+                        onChange={(event) => handleUpload(index, event)}
+                      />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => handleDownload(item)}
+                      disabled={!item.hasDecodedData()}
+                      title="Download"
+                      aria-label="Download"
+                    >
+                      <FaDownload />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => handlePreview(item, index)}
+                      disabled={!item.isPreviewable()}
+                      title="Preview"
+                      aria-label="Preview"
+                    >
+                      <FaEye />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => handleEditContent(index)}
+                      disabled={!item.isContentEditable()}
+                      title="Edit content"
+                      aria-label="Edit content"
+                    >
+                      <FaEdit />
+                    </button>
+
+                    {item.flagDelete ? (
+                      <button
+                        type="button"
+                        className="icon-btn icon-btn--restore"
+                        onClick={() => handleDeleteItem(index)}
+                        title="Restore"
+                        aria-label="Restore"
+                      >
+                        <FaTrashRestore />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="icon-btn icon-btn--danger"
+                        onClick={() => handleDeleteItem(index)}
+                        title="Move to trash"
+                        aria-label="Move to trash"
+                      >
+                        <FaTrash />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
             </div>
-
-            <div className="file-row-actions">
-              <div className="file-pass">
-                <Password
-                  value={item.pass}
-                  onChange={(e) => handlePassChange(index, e.target.value)}
-                  toggleMask
-                  feedback={false}
-                />
-              </div>
-
-              <div className="file-buttons">
-                <button
-                  type="button"
-                  className="icon-btn"
-                  disabled={!item.isDecoded()}
-                  onClick={() => document.getElementById("itemUpload" + index)?.click()}
-                  title="Attach file"
-                  aria-label="Attach file"
-                >
-                  <FaUpload />
-                  <input
-                    id={"itemUpload" + index}
-                    type="file"
-                    style={{ display: 'none' }}
-                    onChange={(event) => handleUpload(index, event)}
-                  />
-                </button>
-
-                <button
-                  type="button"
-                  className="icon-btn"
-                  onClick={() => handleDownload(item)}
-                  disabled={!item.hasDecodedData()}
-                  title="Download"
-                  aria-label="Download"
-                >
-                  <FaDownload />
-                </button>
-
-                <button
-                  type="button"
-                  className="icon-btn"
-                  onClick={() => handlePreview(item, index)}
-                  disabled={!item.isPreviewable()}
-                  title="Preview"
-                  aria-label="Preview"
-                >
-                  <FaEye />
-                </button>
-
-                <button
-                  type="button"
-                  className="icon-btn"
-                  onClick={() => handleEditContent(index)}
-                  disabled={!item.isContentEditable()}
-                  title="Edit content"
-                  aria-label="Edit content"
-                >
-                  <FaEdit />
-                </button>
-
-                {item.flagDelete ? (
-                  <button
-                    type="button"
-                    className="icon-btn icon-btn--restore"
-                    onClick={() => handleDeleteItem(index)}
-                    title="Restore"
-                    aria-label="Restore"
-                  >
-                    <FaTrashRestore />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="icon-btn icon-btn--danger"
-                    onClick={() => handleDeleteItem(index)}
-                    title="Move to trash"
-                    aria-label="Move to trash"
-                  >
-                    <FaTrash />
-                  </button>
-                )}
-              </div>
-            </div>
-
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {editingContentIndex !== null && (
+      {(editingContentIndex !== null) && (items[editingContentIndex] !== undefined) && (
         <div className="content-editor">
           <h4 className="content-editor-title">Editing "{items[editingContentIndex].name}"</h4>
           <textarea

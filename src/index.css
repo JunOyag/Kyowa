@@ -69,3 +69,15 @@ code, .data {
     transition: none !important;
   }
 }
+
+:root {
+  /* ...tokens existants... */
+  --color-warning-soft: rgba(184, 134, 59, 0.25);
+  --color-danger-soft: rgba(178, 68, 68, 0.22);
+}
+
+html.dark {
+  /* ...tokens existants... */
+  --color-warning-soft: rgba(217, 166, 92, 0.25);
+  --color-danger-soft: rgba(217, 123, 123, 0.22);
+}
