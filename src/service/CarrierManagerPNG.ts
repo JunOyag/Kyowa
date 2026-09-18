@@ -100,12 +100,12 @@ class CarrierManagerPNG extends CarrierManagerBase {
         return this.run<void>(new StateObject(), () => this.runRead(), onUpdate);
     }
 
-    public decode(creds: Credentials, onUpdate: (progress: number) => void): Promise<DataContainer> {
+    public async decode(creds: Credentials, onUpdate: (progress: number) => void): Promise<DataContainer> {
         if (Task.LOG) console.log("inst " + this.taskInstanceNumber + " ; call decode : " + Date.now());
 
         const state = new StateObject();
         state.data = new DataContainer();
-        state.hash = creds.getHash();
+        state.hash = await creds.getHash();
         state.bitsOnLayer = this.imageData.width * this.imageData.height * 4; // ARGB
         state.bitTotal = state.bitsOnLayer * 8; // 8-bits per channel
         state.resetPos();
@@ -197,14 +197,14 @@ class CarrierManagerPNG extends CarrierManagerBase {
         return false;
     }
 
-    public encode(creds: Credentials, data: DataContainer, onUpdate: (progress: number) => void): Promise<void> {
+    public async encode(creds: Credentials, data: DataContainer, onUpdate: (progress: number) => void): Promise<void> {
         if (Task.LOG) console.log("inst " + this.taskInstanceNumber + " ; call encode : " + Date.now());
 
         const state = new StateObject();
         state.data = data;
         state.encodeStatus = StatusEncoder.PRINT_DATA_CONTAINER;
         state.byteIndex = 0;
-        state.hash = creds.getHash();
+        state.hash = await creds.getHash();
         state.bitsOnLayer = this.imageData.width * this.imageData.height * 4; // ARGB
         state.bitTotal = state.bitsOnLayer * 8; // 8-bits per channel
         state.resetPos();

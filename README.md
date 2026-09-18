@@ -1,70 +1,89 @@
-# Getting Started with Create React App
+# Kyowa
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Kyowa hides files inside an image. Each hidden file is encrypted with its own
+passphrase before being written into the image's pixel data, so an image
+that looks completely ordinary can carry one or more encrypted documents,
+notes, or files.
 
-## Available Scripts
+## Features
 
-In the project directory, you can run:
+- Hide any number of files inside a PNG or JPEG image
+- Each hidden file has its own passphrase (AES-CBC, key derived with PBKDF2)
+- Choice of hashing scheme for the hiding-pattern seed: SHA-256, SHA-512, or
+  Argon2id (memory-hard, slower on purpose — see [Security notes](#security-notes))
+- Drag an image straight from another browser tab, or choose one from disk
+- Built-in text editor for quick notes, with search across all decrypted
+  notes (jumps to the match, selects it, and scrolls it into view)
+- Collapsible entries in the hidden-file list, so a note can stay open
+  alongside the search bar without scrolling through the rest of the list
+- Try a list of candidate passphrases against every still-encrypted file at once
+- Live storage gauge showing how much of the image's capacity is used, with
+  visual warning zones for images that would become visibly altered
+- Light / dark theme
 
-### `npm start`
+## How it works
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Kyowa hides data using steganography:
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+- **PNG carriers** use the least-significant bits of the image's ARGB channels.
+- **JPEG carriers** use the least-significant bits of the image's DCT
+  (frequency-domain) coefficients, chosen so the changes stay within the
+  range the JPEG encoder already tolerates.
 
-### `npm test`
+Each hidden file is serialized, AES-encrypted with a passphrase-derived key,
+and written bit-by-bit into positions selected by a hash of the passphrase —
+so retrieving a file requires knowing (or trying) its passphrase. Unrelated
+hidden files in the same image can each use a different passphrase.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Security notes
 
-### `npm run build`
+- The **hashing scheme selector** (SHA-256 / SHA-512 / Argon2id) only
+  controls how the *hiding pattern* (which pixel/coefficient positions are
+  used) is derived from the passphrase. It does not change how individual
+  files are encrypted — that always uses AES-CBC with a PBKDF2-SHA256
+  derived key, regardless of this setting.
+- Argon2id is intentionally slow (memory-hard), which raises the cost of
+  brute-forcing the hiding pattern. It runs with a fixed salt: the app
+  stores nothing alongside the hidden data besides the image itself, so the
+  hash must be fully reproducible from the passphrase alone. This means
+  Argon2id mainly adds per-attempt computational cost here, not protection
+  against precomputed tables across different deployments of the app.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+> **Note:** this project is a personal / educational tool. The cryptography
+> and steganography have not been independently audited; do not rely on it
+> to protect anything sensitive.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Getting started
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```bash
+bun install
+bun run dev
+```
 
-### `npm run eject`
+Runs the app in development mode with Vite. Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### Opening an image
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+- Click **"Choose an image"**, or
+- Drag an image directly from another browser tab and drop it onto the
+  image zone (works even for images from other websites — most Chromium
+  browsers materialize the dropped file regardless of that site's CORS
+  settings, since the drop target is a different page).
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+### Available scripts
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+- `bun run dev` / `bun start` — start the Vite development server
+- `bun test` — run the test suite with Vitest
+- `bun run build` — build a production bundle in `build/` (also generates the offline-caching service worker)
+- `bun run preview` — serve the production build locally to verify it
 
-## Learn More
+## Tech stack
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- React + TypeScript, built with [Vite](https://vitejs.dev/)
+- PrimeReact (unstyled) with a Tailwind CSS passthrough theme
+- `crypto-js` (SHA-256/512) and `hash-wasm` (Argon2id) for hashing, the Web
+  Crypto API for AES encryption/decryption
+- `upng` for PNG encoding/decoding
+- A custom JPEG encoder/decoder for direct access to DCT coefficients
+- Vitest for tests
+- Workbox for the offline service worker

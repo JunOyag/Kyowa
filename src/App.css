@@ -762,3 +762,10 @@ button {
   font-size: 0.78rem;
   color: var(--color-text-muted);
 }
+
+.hash-algo-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  max-width: 32rem;
+}
