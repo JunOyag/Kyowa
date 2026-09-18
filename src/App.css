@@ -740,3 +740,25 @@ button {
 .capacity-gauge-scale-mark {
   transform: translateX(-50%);
 }
+
+.image-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: var(--space-2);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.image-dropzone--active {
+  border-color: var(--color-accent);
+  background-color: var(--color-warning-soft);
+}
+
+.image-dropzone-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
