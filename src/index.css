@@ -81,3 +81,14 @@ html.dark {
   --color-warning-soft: rgba(217, 166, 92, 0.25);
   --color-danger-soft: rgba(217, 123, 123, 0.22);
 }
+
+:root {
+  /* ...tokens existants... */
+  --toastify-color-light: var(--color-surface);
+  --toastify-text-color-light: var(--color-text);
+  --toastify-color-success: var(--color-accent);
+  --toastify-color-warning: var(--color-warning);
+  --toastify-color-error: var(--color-danger);
+  --toastify-color-info: var(--color-text-muted);
+  --toastify-font-family: var(--font-sans);
+}

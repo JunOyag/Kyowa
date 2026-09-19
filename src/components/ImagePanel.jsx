@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { FaFileImage, FaSyncAlt } from 'react-icons/fa';
+import { toast } from 'react-toastify';
 
 import CarrierFactoryInstance from '../service/CarrierFactory.ts';
 
@@ -25,7 +26,7 @@ const ImagePanel = ({ callback }) => {
     }
 
     if (CarrierFactoryInstance.getAllMimeTypes().filter((e) => file.type === e).length === 0) {
-      alert("Image mime type is not valid.");
+      toast.error("This image format isn't supported.", { toastId: 'imagepanel-mime-error' });
       return;
     }
 
@@ -43,13 +44,10 @@ const ImagePanel = ({ callback }) => {
   function handleImageChange(event) {
     const file = event.target.files[0];
     processFile(file);
-    // Permet de resélectionner le même fichier (input file ne redéclenche
-    // pas onChange si la valeur ne change pas).
     event.target.value = '';
   }
 
   function handleDragOver(event) {
-    // Indispensable : sans ça, le navigateur refuse le drop par défaut.
     event.preventDefault();
     event.dataTransfer.dropEffect = 'copy';
     setIsDraggingOver(true);
@@ -66,11 +64,10 @@ const ImagePanel = ({ callback }) => {
 
     const file = event.dataTransfer.files && event.dataTransfer.files[0];
     if (!file) {
-      // L'image glissée n'a pas pu être matérialisée en fichier par le
-      // navigateur (cas rare : certains navigateurs/certaines images
-      // cross-origin très restreintes). On informe plutôt que d'échouer
-      // silencieusement.
-      alert("Couldn't read the dropped image. Try dragging it into a separate Kyowa tab, or save it locally and use \"Choose an image\" instead.");
+      toast.error(
+        "Couldn't read the dropped image. Try dragging it into a separate Kyowa tab, or use \"Choose an image\" instead.",
+        { toastId: 'imagepanel-drop-error' }
+      );
       return;
     }
 

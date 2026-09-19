@@ -1,22 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FaUpload, FaDownload, FaEye, FaTrash, FaTrashRestore, FaEdit, FaPlusCircle, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { Password } from 'primereact/password';
+import { toast } from 'react-toastify';
 import ItemData from '../model/component/ItemData.ts';
 import UiUtils from '../util/UiUtils.ts';
+import ConfirmDialog from './ConfirmDialog.tsx';
 
 let nbTrashItems = 0;
 
 type SearchMatch = { itemIndex: number; start: number };
 type PendingSelection = { start: number; end: number };
+type ConfirmRequest = { message: string; danger: boolean; resolve: (v: boolean) => void };
 
-/**
- * Calcule le scrollTop nécessaire pour rendre visible, au centre du
- * textarea, la position `index` du texte. Technique du "mirror div" :
- * on clone la mise en forme du textarea dans un élément invisible, on y
- * place le texte jusqu'à l'index recherché, et on lit la position verticale
- * obtenue — seule façon fiable de tenir compte du retour à la ligne
- * automatique (wrap) avec une police à chasse variable.
- */
 function computeScrollTopForIndex(textarea: HTMLTextAreaElement, index: number): number {
   const style = window.getComputedStyle(textarea);
   const mirror = document.createElement('div');
@@ -62,10 +57,8 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
   const [isTryingBulk, setIsTryingBulk] = useState<boolean>(false);
   const [bulkResultMsg, setBulkResultMsg] = useState<string>("");
 
-  // --- Repli / dépli des entrées ---
   const [collapsedUids, setCollapsedUids] = useState<Set<number>>(new Set());
 
-  // --- Recherche ---
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchScopeItemIndex, setSearchScopeItemIndex] = useState<number | null>(null);
   const [currentMatchIndex, setCurrentMatchIndex] = useState<number>(0);
@@ -73,12 +66,11 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+
 
   const replaceItems = (newItems: ItemData[]) => {
     setItems((prevItems) => {
-      // Si l'élément en cours d'édition n'existe plus à la même position
-      // (le tableau a été restructuré, ex. après un nouveau déchiffrement),
-      // on ferme l'éditeur plutôt que de garder un index devenu invalide.
       if (editingContentIndex !== null) {
         const prevItem = prevItems[editingContentIndex];
         const nextItem = newItems[editingContentIndex];
@@ -89,7 +81,6 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
         }
       }
 
-      // Même vérification pour le champ de renommage en cours d'édition.
       if (editableIndex !== null) {
         const prevItem = prevItems[editableIndex];
         const nextItem = newItems[editableIndex];
@@ -102,7 +93,6 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
       return newItems;
     });
 
-    // Nettoie les entrées repliées dont l'élément a disparu.
     setCollapsedUids((prev) => {
       const validUids = new Set(newItems.map((it) => it.uid));
       const next = new Set<number>();
@@ -121,6 +111,20 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
   }
 
   listUpdate(items, replaceItems);
+
+
+  // --- Confirmation modale (remplace window.confirm) ---
+
+  const askConfirm = (message: string, danger: boolean = false): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setConfirmRequest({ message, danger, resolve });
+    });
+  };
+
+  const closeConfirm = (result: boolean) => {
+    confirmRequest?.resolve(result);
+    setConfirmRequest(null);
+  };
 
 
   const handleNameClick = (index) => {
@@ -154,12 +158,15 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
     updateItems(newItems);
   };
 
-  const handleEmptyTrash = () => {
+  const handleEmptyTrash = async () => {
     let lstItemsToDelete = items.filter((it) => it.flagDelete === true);
     if (lstItemsToDelete.length > 0) {
-      let confirmDelete = window.confirm("Are you sure you want to permanently delete these " + lstItemsToDelete.length + " item(s)?");
+      const confirmed = await askConfirm(
+        `Permanently delete these ${lstItemsToDelete.length} item(s)? This can't be undone.`,
+        true
+      );
 
-      if (confirmDelete) {
+      if (confirmed) {
         let lstUids = lstItemsToDelete.map((it) => it.uid);
         updateItems(items.filter((it) => !lstUids.includes(it.uid)));
         nbTrashItems = 0;
@@ -168,11 +175,14 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
     }
   };
 
-  const handleUpload = (index, event) => {
+  const handleUpload = async (index, event) => {
     const item = items[index];
     if ((item.isText()) && (item.hasDecodedData())) {
-      const confirmOverride = window.confirm("Uploading a new file will delete the existing note. Continue?");
-      if (!confirmOverride) return;
+      const confirmed = await askConfirm(
+        "Uploading a new file will delete the existing note. Continue?",
+        true
+      );
+      if (!confirmed) return;
     }
 
     const file: File = event.target.files[0];
@@ -205,7 +215,7 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
       link.click();
       URL.revokeObjectURL(url);
     } else {
-      alert('No file or content to download.');
+      toast.error('No file or content to download.', { toastId: 'editablelist-download-error' });
     }
   };
 
@@ -216,7 +226,7 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
       window.open(url, '_blank');
       URL.revokeObjectURL(url);
     } else {
-      alert('No content to preview.');
+      toast.error('No content to preview.', { toastId: 'editablelist-preview-error' });
     }
   };
 
@@ -331,8 +341,6 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
   const hasEncryptedItems = items.some((it) => (!it.isDecoded()) && (!it.flagDelete));
 
 
-  // --- Repli / dépli ---
-
   const toggleCollapse = (uid: number) => {
     setCollapsedUids((prev) => {
       const next = new Set(prev);
@@ -345,8 +353,6 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
     });
   };
 
-
-  // --- Recherche ---
 
   const getItemSearchText = (index: number, item: ItemData): string => {
     if (index === editingContentIndex) {
@@ -399,11 +405,6 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
   const displayIndex = matches.length === 0 ? 0 : Math.min(currentMatchIndex, matches.length - 1);
   const matchLength = searchQuery.trim().length;
 
-  /**
-   * Ouvre la note visée, déplie son entrée et replie toutes les autres
-   * (pour garder la barre de recherche et l'éditeur visibles à l'écran),
-   * puis sélectionne le texte trouvé et fait défiler le contenu jusqu'à lui.
-   */
   const jumpToMatch = (matchIdx: number) => {
     const m = matches[matchIdx];
     if (!m) return;
@@ -451,7 +452,6 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
     }
 
     if (wasEmpty) {
-      // La recherche démarre : la portée (note ouverte, ou toutes les notes) est figée ici.
       setSearchScopeItemIndex(editingContentIndex);
       setCurrentMatchIndex(0);
       setHasNavigated(false);
@@ -769,6 +769,14 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmRequest !== null}
+        message={confirmRequest?.message ?? ''}
+        danger={confirmRequest?.danger ?? false}
+        onConfirm={() => closeConfirm(true)}
+        onCancel={() => closeConfirm(false)}
+      />
     </div>
   );
 };

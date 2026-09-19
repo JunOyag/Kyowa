@@ -769,3 +769,63 @@ button {
   color: var(--color-text-muted);
   max-width: 32rem;
 }
+
+/* react-toastify : allure plate cohérente avec le reste (filet fin,
+   pas d'ombre, une bordure gauche colorée plutôt qu'un fond teinté). */
+.Toastify__toast {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: none;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+}
+
+.Toastify__toast--success {
+  border-left: 3px solid var(--color-accent);
+}
+
+.Toastify__toast--warning {
+  border-left: 3px solid var(--color-warning);
+}
+
+.Toastify__toast--error {
+  border-left: 3px solid var(--color-danger);
+}
+
+.Toastify__close-button {
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
+/* Modale de confirmation (remplace window.confirm) */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 22, 26, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  z-index: 1000;
+}
+
+.modal-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  max-width: 24rem;
+  width: 100%;
+}
+
+.modal-message {
+  margin: 0 0 var(--space-2);
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}

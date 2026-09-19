@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 
 import 'primeicons/primeicons.css';
 import { ProgressBar } from 'primereact/progressbar';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 import './App.css';
 import Credentials from './model/Credentials.ts';
@@ -93,6 +95,7 @@ function App() {
 
   const onDecodeSuccess = async (data: DataContainer) => {
     msg("Data found : items updated.");
+    toast.success("Hidden data found.", { toastId: 'decode-success' });
 
     // keep new items
     let newListItems = listItems.filter((item) => (item.flagNew));
@@ -128,6 +131,7 @@ function App() {
 
   const onDecodeError = (err) => {
     msg("No data found : items not updated.");
+    toast.warning("No hidden data found with this passphrase.", { toastId: 'decode-no-data' });
     console.log("onDecodeError : " + err);
   }
 
@@ -183,12 +187,14 @@ function App() {
 
   const onReadSuccess = () => {
     msg("Image read.");
+    toast.success("Image loaded.", { toastId: 'read-success' });
     updateImageStorageCapacities();
     tryDecode();
   }
 
   const onReadError = (err) => {
     msg("Image could not be read : " + err);
+    toast.error("Couldn't load the image (" + err + ").", { toastId: 'read-error' });
     console.log("onReadError : " + err);
     setProgressVisible(false);
   }
@@ -207,6 +213,8 @@ function App() {
 
     if (carrierManager === undefined) {
       msg("Image file format not supported.");
+      toast.error("This image format isn't supported.", { toastId: 'read-format-error' });
+      setProgressVisible(false);
       return;
     }
 
@@ -270,6 +278,7 @@ function App() {
 
   const onWriteSuccess = (blob: Blob) => {
     msg("Image saved.");
+    toast.success("Image saved.", { toastId: 'write-success' });
 
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -281,6 +290,7 @@ function App() {
 
   const onWriteError = (err) => {
     msg("Couldn't save the image (" + err + ").");
+    toast.error("Couldn't save the image (" + err + ").", { toastId: 'write-error' });
   }
 
   const onAfterWrite = () => {
@@ -319,6 +329,7 @@ function App() {
 
   const onEncodeError = (err) => {
     msg("Encoding error (" + err + ").");
+    toast.error("Encoding error (" + err + ").", { toastId: 'encode-error' });
     setProgressVisible(false);
   }
 
@@ -415,10 +426,17 @@ function App() {
   }
 
 
-
-
   return (
     <div className="App">
+      <ToastContainer
+        position="top-right"
+        autoClose={4000}
+        hideProgressBar
+        closeOnClick
+        pauseOnHover
+        draggable={false}
+        newestOnTop
+      />
       <div className="app-shell">
         <header className="app-header">
           <div>
@@ -466,40 +484,40 @@ function App() {
 
               <EditableList listUpdate={cbListUpdate} list={listItems} onTryDecodeItem={tryDecodeItem} />
 
-             {(storTotalCap > 0) && (
-  <div className="capacity">
-    <div className="capacity-row">
-      <span className="capacity-label">Storage</span>
-      <span className="capacity-value">
-        {getStorSizeLabel()} <span className="capacity-percent">({Math.round(storRateCap)}%)</span>
-      </span>
-    </div>
+              {(storTotalCap > 0) && (
+                <div className="capacity">
+                  <div className="capacity-row">
+                    <span className="capacity-label">Storage</span>
+                    <span className="capacity-value">
+                      {getStorSizeLabel()} <span className="capacity-percent">({Math.round(storRateCap)}%)</span>
+                    </span>
+                  </div>
 
-    <div
-      className="capacity-gauge"
-      role="img"
-      aria-label={`Storage used: ${Math.round(storRateCap)} percent. ${getStorWarning() || 'Safe zone.'}`}
-    >
-      <div className="capacity-gauge-track">
-        <div className="capacity-gauge-zone capacity-gauge-zone--warning" />
-        <div className="capacity-gauge-zone capacity-gauge-zone--danger" />
-        <div className="capacity-gauge-fill" style={{ width: `${Math.min(storRateCap, 100)}%` }} />
-      </div>
-      <div className="capacity-gauge-scale">
-        <span className="capacity-gauge-scale-start">0%</span>
-        <span className="capacity-gauge-scale-mark" style={{ left: '33%' }}>33%</span>
-        <span className="capacity-gauge-scale-mark" style={{ left: '67%' }}>67%</span>
-        <span className="capacity-gauge-scale-end">100%</span>
-      </div>
-    </div>
+                  <div
+                    className="capacity-gauge"
+                    role="img"
+                    aria-label={`Storage used: ${Math.round(storRateCap)} percent. ${getStorWarning() || 'Safe zone.'}`}
+                  >
+                    <div className="capacity-gauge-track">
+                      <div className="capacity-gauge-zone capacity-gauge-zone--warning" />
+                      <div className="capacity-gauge-zone capacity-gauge-zone--danger" />
+                      <div className="capacity-gauge-fill" style={{ width: `${Math.min(storRateCap, 100)}%` }} />
+                    </div>
+                    <div className="capacity-gauge-scale">
+                      <span className="capacity-gauge-scale-start">0%</span>
+                      <span className="capacity-gauge-scale-mark" style={{ left: '33%' }}>33%</span>
+                      <span className="capacity-gauge-scale-mark" style={{ left: '67%' }}>67%</span>
+                      <span className="capacity-gauge-scale-end">100%</span>
+                    </div>
+                  </div>
 
-    {getStorWarning() && (
-      <p className={`capacity-warning capacity-warning--${getStorWarningLevel()}`}>
-        {getStorWarning()}
-      </p>
-    )}
-  </div>
-)}
+                  {getStorWarning() && (
+                    <p className={`capacity-warning capacity-warning--${getStorWarningLevel()}`}>
+                      {getStorWarning()}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </section>
         </div>
