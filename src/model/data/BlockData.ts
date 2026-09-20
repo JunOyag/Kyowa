@@ -84,9 +84,8 @@ class BlockData extends BlockBase {
     }
 
 
-    private async createAESKey(pass: string) {
+    private async createAESKey(pass: string, salt: Uint8Array) {
         const encoder = new TextEncoder();
-        const salt = new Uint8Array(16);
         const iterations = 65536;
         const hash = 'SHA-256';
 
@@ -115,11 +114,6 @@ class BlockData extends BlockBase {
     }
 
 
-    private createIV(): Uint8Array {
-        return new Uint8Array(16);
-    }
-
-
     private async encryptData(data, key, iv) {
         const encrypted = await crypto.subtle.encrypt(
             {
@@ -145,64 +139,90 @@ class BlockData extends BlockBase {
     };
 
 
+    /**
+     * Tente de déchiffrer avec un sel/IV donnés. Ne modifie l'état interne
+     * (name/contentType/decodedData/decoded) qu'en cas de succès complet
+     * (déchiffrement + en-tête interne valide) — un échec partiel ne laisse
+     * plus l'objet dans un état à moitié vidé, contrairement à l'ancienne
+     * version.
+     */
+    private async tryDecodeWith(pass: string, salt: Uint8Array, iv: Uint8Array, ciphertext: Uint8Array): Promise<boolean> {
+        let key = await this.createAESKey(pass, salt);
+        let decryptedBuf;
+        try {
+            decryptedBuf = await this.decryptData(ciphertext, key, iv);
+        }
+        catch (error) {
+            return false;
+        }
+
+        let inBuf = new Uint8Array(decryptedBuf);
+
+        if (inBuf.length < 6) {
+            return false;
+        }
+
+        for (let i = 0; i < BlockData.HEADER.length; i++) {
+            if (inBuf[i] !== BlockData.HEADER[i]) {
+                return false;
+            }
+        }
+
+        let idx = BlockData.HEADER.length;
+
+        let reader = this.readString(inBuf, idx);
+        if (reader === null) {
+            console.log("BlockData : Malformed inBuf while reading Name");
+            return false;
+        }
+        const newName = reader.value;
+        idx = reader.idx;
+
+        reader = this.readString(inBuf, idx);
+        if (reader === null) {
+            console.log("BlockData : Malformed inBuf while reading ContentType");
+            return false;
+        }
+        const newContentType = reader.value;
+        idx = reader.idx;
+
+        const newDecodedData = inBuf.slice(idx);
+
+        let hash = Binary.computeSHA256(newDecodedData);
+        console.log("BlockData::decode : decodedData hash : " + Binary.arrayUint8ToHex(hash));
+
+        this.name = newName;
+        this.contentType = newContentType;
+        this.decodedData = newDecodedData;
+        this.decoded = true;
+        this.encodedDataSync = true;
+
+        return true;
+    }
+
+
     public async tryDecode(pass: string) {
         if (this.isDecoded()) {
             return;
         }
-        // Decode this.blockDataRaw into inBuf
-        let key = await this.createAESKey(pass);
-        let iv = this.createIV();
-        let decryptedBuf;
-        try {
-            decryptedBuf = await this.decryptData(this.blockDataRaw, key, iv);
-        }
-        catch (error) {
-            // console.log("BlockData : Wrong pass : " + pass);
-            return;
-        }
-        // console.log("BlockData : Correct pass : " + pass);
-        let inBuf = new Uint8Array(decryptedBuf);
 
-        this.encodedDataSync = false;
-        this.decodedData = new Uint8Array(0);
-        this.name = "";
-
-        if (inBuf.length >= 6) {
-            // Check for internal header
-            for (let i = 0; i < BlockData.HEADER.length; i++) {
-                if (inBuf[i] !== BlockData.HEADER[i]) {
-                    console.log("BlockData : Wrong header")
-                    return;
-                }
-            }
-
-            let idx = BlockData.HEADER.length;
-
-            let reader = this.readString(inBuf, idx);
-            if (reader === null) {
-                console.log("BlockData : Malformed inBuf while reading Name");
+        // Format actuel : sel (16 octets) + IV (16 octets) + ciphertext,
+        // générés aléatoirement à chaque chiffrement (voir encode()).
+        if (this.blockDataRaw.length >= 32) {
+            const salt = this.blockDataRaw.slice(0, 16);
+            const iv = this.blockDataRaw.slice(16, 32);
+            const ciphertext = this.blockDataRaw.slice(32);
+            if (await this.tryDecodeWith(pass, salt, iv, ciphertext)) {
                 return;
             }
-            this.name = reader.value;
-            idx = reader.idx;
-
-            reader = this.readString(inBuf, idx);
-            if (reader === null) {
-                console.log("BlockData : Malformed inBuf while reading ContentType");
-                return;
-            }
-            this.contentType = reader.value;
-            idx = reader.idx;
-
-            this.decodedData = inBuf.slice(idx);
-
-            let hash = Binary.computeSHA256(this.decodedData);
-            console.log("BlockData::decode : decodedData hash : " + Binary.arrayUint8ToHex(hash));
-
-            this.decoded = true;
-            this.encodedDataSync = true;
         }
 
+        // Ancien format (sel/IV fixes à zéro, tout le buffer est le
+        // ciphertext) : conservé uniquement pour pouvoir relire des images
+        // encodées avant l'introduction du sel/IV aléatoires. Un fichier
+        // décodé par ce chemin restera dans l'ancien format tant qu'il
+        // n'est pas modifié et ré-enregistré.
+        await this.tryDecodeWith(pass, new Uint8Array(16), new Uint8Array(16), this.blockDataRaw);
     }
 
     public async encode(pass: string) {
@@ -238,29 +258,18 @@ class BlockData extends BlockBase {
             outBuf.set(this.decodedData, outOfs);
             outOfs += this.decodedData.length;
 
-            // TODO : Encrypt outBuf with a this.pass derived key
-            let key = await this.createAESKey(pass);
-            let iv = this.createIV();
-            this.blockDataRaw = new Uint8Array(await this.encryptData(outBuf, key, iv));
+            // Sel et IV aléatoires, différents à chaque chiffrement, préfixés
+            // en clair au bloc chiffré : aucun stockage séparé nécessaire, et
+            // on évite de réutiliser la même paire (clé, IV) en CBC.
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const iv = crypto.getRandomValues(new Uint8Array(16));
+            let key = await this.createAESKey(pass, salt);
+            const ciphertext = new Uint8Array(await this.encryptData(outBuf, key, iv));
 
-            // Test encryption / decryption reversion
-            // let decryptedBuf;
-            // try {
-            //     decryptedBuf = await this.decryptData(this.blockDataRaw, key, iv);
-            // }
-            // catch (error) {
-            //     console.log("BlockData : En/decryption test failed");
-            // }
-
-            // if (decryptedBuf.byteLength !== outBuf.length) {
-            //     console.log("Len diff");
-            // }
-
-            // for (let i = 0; i < decryptedBuf.length; i++) {
-            //     if (decryptedBuf[i] !== outBuf[i]) {
-            //         console.log("buf diff");
-            //     }
-            // }
+            this.blockDataRaw = new Uint8Array(salt.length + iv.length + ciphertext.length);
+            this.blockDataRaw.set(salt, 0);
+            this.blockDataRaw.set(iv, salt.length);
+            this.blockDataRaw.set(ciphertext, salt.length + iv.length);
 
             this.encodedDataSync = true;
         }

@@ -1,12 +1,11 @@
 import sha512 from 'crypto-js/sha512';
 import sha256 from 'crypto-js/sha256';
-import { argon2id } from 'hash-wasm';
 import Binary from '../util/Binary.ts';
+import { computeArgon2id } from '../util/argon2Client.ts';
 
 interface hashFctAsync {
     (input: string): Promise<Uint8Array>;
 }
-
 
 function cryptoJsToUint8(wordArray): Uint8Array {
     return new Uint8Array(Binary.arrayInt32ToUint8(wordArray.words));
@@ -15,19 +14,7 @@ function cryptoJsToUint8(wordArray): Uint8Array {
 class HashAlgo {
 
     public static tabHashAlgos: HashAlgo[] = [
-        new HashAlgo("Argon2id", async (input: string) => {
-            const salt = cryptoJsToUint8(sha256(input)).slice(0,16);
-            const hash = await argon2id({
-                password: input,
-                salt: salt,
-                parallelism: 4,
-                iterations: 3,
-                memorySize: 64*1024, // 64 MiB
-                hashLength: 32,
-                outputType: 'binary',
-            });
-            return hash as Uint8Array;
-        }),
+        new HashAlgo("Argon2id", async (input: string) => computeArgon2id(input)),
         new HashAlgo("SHA-512", async (input: string) => cryptoJsToUint8(sha512(input))),
         new HashAlgo("SHA-256", async (input: string) => cryptoJsToUint8(sha256(input))),
     ];
@@ -89,7 +76,6 @@ class Credentials {
         if (this.hashValid !== true) {
             let hashAlgoItem = HashAlgo.fromCode(this.hashAlgo);
             if (hashAlgoItem === undefined) {
-                // Fall back to default hash algo
                 hashAlgoItem = HashAlgo.tabHashAlgos[0];
             }
 

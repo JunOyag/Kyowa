@@ -16,6 +16,7 @@ import PassPanel from './components/PassPanel.jsx';
 import ImagePanel from './components/ImagePanel.jsx';
 import EditableList from './components/EditableList.tsx';
 import ThemeSwitcher from './components/themeSwitcher';
+import DiffPreviewModal from './components/DiffPreviewModal.tsx';
 import { TaskCancelledError } from './util/Task.ts';
 
 import UiUtils from './util/UiUtils.ts';
@@ -24,9 +25,12 @@ import UiUtils from './util/UiUtils.ts';
 
 let carrierManager: CarrierManagerBase | undefined;
 
+type DiffPreviewState = { beforeUrl: string; afterUrl: string; blob: Blob } | null;
+
 function App() {
 
   const [fileName, setFileName] = useState<string>("");
+  const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [credentials, setCredentials] = useState(new Credentials());
   const [status, setStatus] = useState("Open an image file");
   const [progress, setProgress] = useState(0);
@@ -35,6 +39,7 @@ function App() {
   const [storRateCap, setStorRateCap] = useState<number>(0.5);
   const [storTotalCap, setStorTotalCap] = useState<number>(0);
   const [storUsedCap, setStorUsedCap] = useState<number>(0);
+  const [diffPreview, setDiffPreview] = useState<DiffPreviewState>(null);
 
 
   let cbReplaceItems: CallableFunction; // To send listItems into EditableList
@@ -232,8 +237,21 @@ function App() {
   }
 
 
+  const closeDiffPreview = () => {
+    setDiffPreview((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev.beforeUrl);
+        URL.revokeObjectURL(prev.afterUrl);
+      }
+      return null;
+    });
+  }
+
+
   const cbImageInputChanged = (file: File) => {
+    closeDiffPreview();
     setFileName(file.name);
+    setOriginalFile(file);
     carrierManager = CarrierFactoryInstance.getCarrierManager(file);
     tryRead(file);
   }
@@ -288,45 +306,6 @@ function App() {
     URL.revokeObjectURL(url);
   }
 
-  const onWriteError = (err) => {
-    msg("Couldn't save the image (" + err + ").");
-    toast.error("Couldn't save the image (" + err + ").", { toastId: 'write-error' });
-  }
-
-  const onAfterWrite = () => {
-    setProgressVisible(false);
-  }
-
-
-  const startWrite = async () => {
-    if (carrierManager === undefined) {
-      return;
-    }
-
-    setProgressVisible(true);
-
-    carrierManager.stop();
-    carrierManager = carrierManager.newInstance();
-
-    try {
-      const blob = await carrierManager.write();
-      onWriteSuccess(blob);
-      onAfterWrite();
-    } catch (error) {
-      if (error instanceof TaskCancelledError) {
-        return;
-      }
-      onWriteError(error);
-      onAfterWrite();
-    }
-  }
-
-
-  const onEncodeSuccess = () => {
-    msg("Items encoded.");
-    startWrite();
-  }
-
   const onEncodeError = (err) => {
     msg("Encoding error (" + err + ").");
     toast.error("Encoding error (" + err + ").", { toastId: 'encode-error' });
@@ -334,19 +313,29 @@ function App() {
   }
 
 
-  const startEncode = async () => {
-
-    if (carrierManager === undefined) {
-      return;
+  /**
+   * Encode tous les items puis écrit l'image finale, et retourne le blob
+   * obtenu — sans le télécharger. Repart systématiquement d'une lecture
+   * fraîche de `originalFile` : encode()/write() modifient les pixels EN
+   * PLACE sur l'instance de CarrierManager utilisée, donc réutiliser
+   * `carrierManager` (partagé avec le reste de l'app, notamment le
+   * décodage) enchaînerait les encodages les uns sur les autres au lieu de
+   * toujours repartir de l'image d'origine.
+   */
+  const runEncodeAndWrite = async (): Promise<Blob> => {
+    if (originalFile === null) {
+      throw new Error("No image loaded.");
     }
 
-    msg("Encoding items...");
-    setProgressVisible(true);
+    const freshManager = CarrierFactoryInstance.getCarrierManager({ type: originalFile.type });
+    if (freshManager === undefined) {
+      throw new Error("Image file format not supported.");
+    }
+    await freshManager.read(originalFile, () => {});
 
     let dc = new DataContainer();
 
     if (listItems !== undefined) {
-      // Convert back ItemData to BlockData and encode
       for (const item of listItems) {
         if (!item.flagDelete) {
           let newBlk = DataConv.toBlockData(item);
@@ -356,20 +345,65 @@ function App() {
       }
     }
 
-    carrierManager.stop();
-    carrierManager = carrierManager.newInstance();
+    await freshManager.encode(credentials, dc, (_progress) => {
+      setProgress(_progress);
+    });
+
+    return await freshManager.write();
+  }
+
+
+  const startEncode = async () => {
+    if (carrierManager === undefined) {
+      return;
+    }
+
+    msg("Encoding items...");
+    setProgressVisible(true);
 
     try {
-      await carrierManager.encode(credentials, dc, (_progress) => {
-        setProgress(_progress);
-      });
-      onEncodeSuccess();
+      const blob = await runEncodeAndWrite();
+      onWriteSuccess(blob);
+      setProgressVisible(false);
     } catch (error) {
       if (error instanceof TaskCancelledError) {
         return;
       }
       onEncodeError(error);
     }
+  }
+
+
+  const startPreview = async () => {
+    if ((carrierManager === undefined) || (originalFile === null)) {
+      return;
+    }
+
+    msg("Preparing preview...");
+    setProgressVisible(true);
+
+    try {
+      const blob = await runEncodeAndWrite();
+      const beforeUrl = URL.createObjectURL(originalFile);
+      const afterUrl = URL.createObjectURL(blob);
+      setDiffPreview({ beforeUrl, afterUrl, blob });
+      msg("Preview ready.");
+      setProgressVisible(false);
+    } catch (error) {
+      if (error instanceof TaskCancelledError) {
+        return;
+      }
+      toast.error("Couldn't generate the preview (" + error + ").", { toastId: 'preview-error' });
+      msg("Preview failed.");
+      setProgressVisible(false);
+    }
+  }
+
+
+  const handleSaveFromPreview = () => {
+    if (!diffPreview) return;
+    onWriteSuccess(diffPreview.blob);
+    closeDiffPreview();
   }
 
 
@@ -428,6 +462,7 @@ function App() {
 
   return (
     <div className="App">
+      <div className="bg-pattern" aria-hidden="true" />
       <ToastContainer
         position="top-right"
         autoClose={4000}
@@ -523,12 +558,24 @@ function App() {
         </div>
 
         <div className="actions">
+          <button className="btn-secondary" onClick={startPreview} disabled={!canExport()}>
+            Compare before / after
+          </button>
           <button className="btn-primary" onClick={handleExport} disabled={!canExport()}>
             {progressVisible && <i className="pi pi-spin pi-cog" style={{ marginRight: '0.5rem' }}></i>}
             Save image
           </button>
         </div>
       </div>
+
+      {diffPreview && (
+        <DiffPreviewModal
+          beforeUrl={diffPreview.beforeUrl}
+          afterUrl={diffPreview.afterUrl}
+          onClose={closeDiffPreview}
+          onSave={handleSaveFromPreview}
+        />
+      )}
     </div>
   );
 }

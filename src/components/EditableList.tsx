@@ -1,5 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FaUpload, FaDownload, FaEye, FaTrash, FaTrashRestore, FaEdit, FaPlusCircle, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import {
+  FaUpload, FaDownload, FaEye, FaTrash, FaTrashRestore, FaEdit, FaPlusCircle,
+  FaChevronDown, FaChevronUp, FaGripVertical
+} from 'react-icons/fa';
 import { Password } from 'primereact/password';
 import { toast } from 'react-toastify';
 import ItemData from '../model/component/ItemData.ts';
@@ -58,6 +61,8 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
   const [bulkResultMsg, setBulkResultMsg] = useState<string>("");
 
   const [collapsedUids, setCollapsedUids] = useState<Set<number>>(new Set());
+  const [selectedUids, setSelectedUids] = useState<Set<number>>(new Set());
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchScopeItemIndex, setSearchScopeItemIndex] = useState<number | null>(null);
@@ -68,6 +73,34 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
 
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
 
+
+  /**
+   * Point d'entrée unique pour purger collapsedUids/selectedUids : appelé
+   * systématiquement par updateItems() (modifications locales) ET
+   * replaceItems() (données repoussées par App.tsx), pour que la barre de
+   * multi-sélection se referme quelle que soit la façon dont des éléments
+   * disparaissent ou passent à la corbeille (individuelle, groupée, vidage
+   * de corbeille...).
+   */
+  const pruneSelectionAndCollapse = (newItems: ItemData[]) => {
+    const stillPresentUids = new Set(newItems.map((it) => it.uid));
+
+    setCollapsedUids((prev) => {
+      const next = new Set<number>();
+      prev.forEach((uid) => { if (stillPresentUids.has(uid)) next.add(uid); });
+      return next;
+    });
+
+    setSelectedUids((prev) => {
+      const next = new Set<number>();
+      newItems.forEach((it) => {
+        if (prev.has(it.uid) && !it.flagDelete) {
+          next.add(it.uid);
+        }
+      });
+      return next;
+    });
+  };
 
   const replaceItems = (newItems: ItemData[]) => {
     setItems((prevItems) => {
@@ -93,20 +126,12 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
       return newItems;
     });
 
-    setCollapsedUids((prev) => {
-      const validUids = new Set(newItems.map((it) => it.uid));
-      const next = new Set<number>();
-      prev.forEach((uid) => {
-        if (validUids.has(uid)) {
-          next.add(uid);
-        }
-      });
-      return next;
-    });
+    pruneSelectionAndCollapse(newItems);
   }
 
   const updateItems = (newItems: ItemData[]) => {
     setItems(newItems);
+    pruneSelectionAndCollapse(newItems);
     listUpdate(newItems, replaceItems);
   }
 
@@ -175,34 +200,39 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
     }
   };
 
-  const handleUpload = async (index, event) => {
+  const processUploadedFile = async (index: number, file: File) => {
     const item = items[index];
+    if (!item.isDecoded()) {
+      return;
+    }
     if ((item.isText()) && (item.hasDecodedData())) {
-      const confirmed = await askConfirm(
-        "Uploading a new file will delete the existing note. Continue?",
-        true
-      );
+      const confirmed = await askConfirm("Uploading a new file will delete the existing note. Continue?", true);
       if (!confirmed) return;
     }
 
+    const newItems = [...items];
+    const it = newItems[index];
+
+    it.name = file.name;
+    it.contentType = file.type;
+    const reader = new FileReader();
+
+    reader.onload = function (e) {
+      const arrayBuffer = e.target?.result;
+      const uint8Array = new Uint8Array(arrayBuffer as ArrayBufferLike);
+      it.decodedData = uint8Array;
+      updateItems(newItems);
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleUpload = async (index, event) => {
     const file: File = event.target.files[0];
     if (file) {
-      const newItems = [...items];
-      const item = newItems[index];
-
-      item.name = file.name;
-      item.contentType = file.type;
-      const reader = new FileReader();
-
-      reader.onload = function (e) {
-        const arrayBuffer = e.target?.result;
-        const uint8Array = new Uint8Array(arrayBuffer as ArrayBufferLike);
-        item.decodedData = uint8Array;
-        updateItems(newItems);
-      };
-
-      reader.readAsArrayBuffer(file);
+      await processUploadedFile(index, file);
     }
+    event.target.value = '';
   };
 
   const handleDownload = (item) => {
@@ -341,6 +371,8 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
   const hasEncryptedItems = items.some((it) => (!it.isDecoded()) && (!it.flagDelete));
 
 
+  // --- Repli / dépli ---
+
   const toggleCollapse = (uid: number) => {
     setCollapsedUids((prev) => {
       const next = new Set(prev);
@@ -353,6 +385,114 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
     });
   };
 
+
+  // --- Sélection multiple ---
+
+  const toggleSelect = (uid: number) => {
+    setSelectedUids((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid); else next.add(uid);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedUids.size === items.length) {
+      setSelectedUids(new Set());
+    } else {
+      setSelectedUids(new Set(items.map((it) => it.uid)));
+    }
+  };
+
+  const handleBulkDownload = () => {
+    const targets = items.filter((it) => selectedUids.has(it.uid) && it.hasDecodedData());
+    if (targets.length === 0) {
+      toast.warning("None of the selected items can be downloaded yet.", { toastId: 'bulk-download-empty' });
+      return;
+    }
+    targets.forEach((item) => handleDownload(item));
+    toast.success(`Downloaded ${targets.length} file(s).`, { toastId: 'bulk-download-success' });
+  };
+
+  const handleBulkTrash = async () => {
+    const targets = items.filter((it) => selectedUids.has(it.uid) && !it.flagDelete);
+    if (targets.length === 0) return;
+
+    const confirmed = await askConfirm(`Move ${targets.length} item(s) to trash?`, true);
+    if (!confirmed) return;
+
+    const targetUids = new Set(targets.map((it) => it.uid));
+    const newItems = items.map((it) => {
+      if (targetUids.has(it.uid)) {
+        it.flagDelete = true;
+        nbTrashItems += 1;
+      }
+      return it;
+    });
+    // La sélection se nettoie automatiquement (pruneSelectionAndCollapse,
+    // appelé par updateItems) puisque ces items sont désormais flagDelete.
+    updateItems(newItems);
+  };
+
+
+  // --- Glisser-déposer : attacher un fichier externe / réordonner ---
+
+  const handleDragStart = (item: ItemData) => (event: React.DragEvent) => {
+    event.dataTransfer.setData('text/x-kyowa-item-uid', String(item.uid));
+    event.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleRowDragOver = (index: number, item: ItemData) => (event: React.DragEvent) => {
+    const isFileDrag = event.dataTransfer.types.includes('Files');
+    if (isFileDrag && !item.isDecoded()) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = isFileDrag ? 'copy' : 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleRowDragLeave = (index: number) => (event: React.DragEvent) => {
+    event.preventDefault();
+    setDragOverIndex((cur) => (cur === index ? null : cur));
+  };
+
+  const reorderItems = (draggedUid: number, targetUid: number) => {
+    if (draggedUid === targetUid) return;
+    const fromIndex = items.findIndex((it) => it.uid === draggedUid);
+    const toIndex = items.findIndex((it) => it.uid === targetUid);
+    if (fromIndex === -1 || toIndex === -1) return;
+    const newItems = [...items];
+    const [moved] = newItems.splice(fromIndex, 1);
+    newItems.splice(toIndex, 0, moved);
+    updateItems(newItems);
+  };
+
+  const handleRowDrop = (index: number, item: ItemData) => async (event: React.DragEvent) => {
+    event.preventDefault();
+    setDragOverIndex(null);
+
+    if (event.dataTransfer.types.includes('Files')) {
+      if (!item.isDecoded()) {
+        toast.warning("Decrypt this item first before attaching a file.", { toastId: 'row-drop-locked' });
+        return;
+      }
+      const file = event.dataTransfer.files && event.dataTransfer.files[0];
+      if (!file) {
+        toast.error("Couldn't read the dropped file.", { toastId: 'row-drop-error' });
+        return;
+      }
+      await processUploadedFile(index, file);
+      return;
+    }
+
+    const draggedUidRaw = event.dataTransfer.getData('text/x-kyowa-item-uid');
+    if (draggedUidRaw === '') return;
+    reorderItems(Number(draggedUidRaw), item.uid);
+  };
+
+
+  // --- Recherche ---
 
   const getItemSearchText = (index: number, item: ItemData): string => {
     if (index === editingContentIndex) {
@@ -495,12 +635,58 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
   const hasTextNotes = items.some((it) => it.isContentEditable());
 
 
+  // --- Raccourcis clavier ---
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+
+      if (isCtrlOrCmd && (e.key.toLowerCase() === 'f') && hasTextNotes) {
+        e.preventDefault();
+        const el = document.getElementById('noteSearch') as HTMLInputElement | null;
+        el?.focus();
+        el?.select();
+        return;
+      }
+
+      if ((editingContentIndex !== null) && (confirmRequest === null)) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setEditingContentIndex(null);
+          setTextEditorValue('');
+          return;
+        }
+        if (isCtrlOrCmd && (e.key.toLowerCase() === 's')) {
+          e.preventDefault();
+          handleSaveContent();
+          return;
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [editingContentIndex, textEditorValue, hasTextNotes, confirmRequest]);
+
+
   return (
     <div style={{ paddingTop: "1rem" }}>
       <div className="list-toolbar">
-        <button type="button" className="btn-secondary" onClick={handleAddItem}>
-          <FaPlusCircle /> Add file
-        </button>
+        <div className="list-toolbar-left">
+          <button type="button" className="btn-secondary" onClick={handleAddItem}>
+            <FaPlusCircle /> Add file
+          </button>
+          {(items.length > 0) && (
+            <label className="select-all-label">
+              <input
+                type="checkbox"
+                checked={(selectedUids.size > 0) && (selectedUids.size === items.length)}
+                onChange={toggleSelectAll}
+              />
+              Select all
+            </label>
+          )}
+        </div>
         {(items.length > 0) && (
           <button
             type="button"
@@ -512,6 +698,21 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
           </button>
         )}
       </div>
+
+      {selectedUids.size > 0 && (
+        <div className="bulk-actions-bar">
+          <span className="bulk-actions-count">{selectedUids.size} selected</span>
+          <button type="button" className="btn-secondary" onClick={handleBulkDownload}>
+            <FaDownload /> Download
+          </button>
+          <button type="button" className="btn-secondary btn-secondary--danger" onClick={handleBulkTrash}>
+            <FaTrash /> Move to trash
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => setSelectedUids(new Set())}>
+            Clear selection
+          </button>
+        </div>
+      )}
 
       {hasEncryptedItems && (
         <div className="password-try-panel">
@@ -553,7 +754,7 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
               value={searchQuery}
               onChange={(e) => handleSearchQueryChange(e.target.value)}
               onKeyDown={handleSearchKeyDown}
-              placeholder="Search text in notes..."
+              placeholder="Search text in notes... (Ctrl+F)"
             />
             {searchQuery.length > 0 && (
               <button
@@ -605,10 +806,43 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
       <div className="file-list">
         {items.map((item, index) => {
           const isCollapsed = collapsedUids.has(item.uid);
+          const rowClasses = [
+            'file-row',
+            item.flagDelete ? 'file-row--trash' : '',
+            dragOverIndex === index ? 'file-row--dragover' : '',
+          ].filter(Boolean).join(' ');
+
           return (
-            <div key={index} className={item.flagDelete ? 'file-row file-row--trash' : 'file-row'}>
+            <div
+              key={index}
+              className={rowClasses}
+              onDragOver={handleRowDragOver(index, item)}
+              onDragLeave={handleRowDragLeave(index)}
+              onDrop={handleRowDrop(index, item)}
+            >
 
               <div className="file-row-header">
+                <button
+                  type="button"
+                  className="drag-handle"
+                  draggable
+                  onDragStart={handleDragStart(item)}
+                  aria-label="Drag to reorder"
+                  title="Drag to reorder"
+                >
+                  <FaGripVertical />
+                </button>
+
+                <div className="row-select">
+                  <input
+                    type="checkbox"
+                    className="row-select-checkbox"
+                    checked={selectedUids.has(item.uid)}
+                    onChange={() => toggleSelect(item.uid)}
+                    aria-label={`Select ${item.name}`}
+                  />
+                </div>
+
                 <div className="file-row-main">
                   <div className="file-badges">
                     {item.flagDelete ? (
@@ -761,10 +995,10 @@ const EditableList = ({ listUpdate, list, onTryDecodeItem }) => {
           />
           <div className="content-editor-actions">
             <button type="button" className="btn-secondary" onClick={handleSaveContent}>
-              Save changes
+              Save changes <span className="shortcut-hint">Ctrl+S</span>
             </button>
             <button type="button" className="btn-secondary" onClick={() => setEditingContentIndex(null)}>
-              Cancel
+              Cancel <span className="shortcut-hint">Esc</span>
             </button>
           </div>
         </div>

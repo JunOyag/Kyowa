@@ -829,3 +829,276 @@ button {
   justify-content: flex-end;
   gap: 0.6rem;
 }
+
+/* Poignée de réordonnancement + sélection + glisser-déposer */
+.drag-handle {
+  cursor: grab;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  padding: 0.2rem;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.row-select-checkbox {
+  flex: 0 0 auto;
+}
+
+.file-row--dragover {
+  border-color: var(--color-accent);
+  background: var(--color-warning-soft);
+  border-radius: var(--radius);
+}
+
+.file-row-header {
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.select-all-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.list-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.bulk-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.6rem;
+  margin-bottom: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.bulk-actions-count {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  margin-right: 0.3rem;
+}
+
+/* Raccourcis clavier affichés dans l'éditeur de note */
+.shortcut-hint {
+  margin-left: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+/* Actions principales : deux boutons désormais */
+.actions {
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* Modale de comparaison avant/après */
+.diff-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  max-width: 60rem;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.diff-panel-title {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.diff-panel-hint {
+  margin: 0 0 var(--space-2);
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.diff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.diff-figure {
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.4rem;
+  cursor: zoom-in;
+  text-align: center;
+}
+
+.diff-figure--amplified {
+  cursor: default;
+}
+
+.diff-figure img {
+  max-width: 100%;
+  display: block;
+  margin: 0 auto;
+  border-radius: var(--radius);
+}
+
+.diff-figure figcaption {
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.diff-loading {
+  display: block;
+  padding: 2rem 0;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+/* Inspecteur zoom/pan */
+.inspector-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  width: 92vw;
+  height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.inspector-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0.6rem var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.inspector-hint {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.inspector-toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.inspector-viewport {
+  flex: 1;
+  overflow: hidden;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg);
+}
+
+.inspector-viewport:active {
+  cursor: grabbing;
+}
+
+.inspector-canvas {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.inspector-canvas--row {
+  flex-direction: row;
+}
+
+.inspector-canvas--column {
+  flex-direction: column;
+}
+
+.inspector-figure {
+  margin: 0;
+  text-align: center;
+}
+
+.inspector-figure img {
+  max-width: none;
+  display: block;
+  user-select: none;
+  pointer-events: none;
+}
+
+.inspector-figure figcaption {
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+/* Colonne de checkboxes alignée (largeur fixe, comme les icônes voisines) */
+.row-select {
+  flex: 0 0 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.row-select-checkbox,
+.select-all-label input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+/* Fond décoratif : logo répété, léger effet 3D, coût de calcul quasi nul
+   (un seul calque, animé uniquement via transform, promu sur le GPU). */
+.App {
+  position: relative;
+  z-index: 1;
+}
+
+.bg-pattern {
+  position: fixed;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url('/logo_128.png');
+  background-repeat: repeat;
+  background-size: 96px 96px;
+  opacity: 0.05;
+  filter: grayscale(1);
+  transform-origin: center center;
+  animation: bg-pattern-drift 90s ease-in-out infinite;
+  will-change: transform;
+}
+
+html.dark .bg-pattern {
+  opacity: 0.08;
+  filter: grayscale(1) invert(1);
+}
+
+@keyframes bg-pattern-drift {
+  0%   { transform: perspective(900px) rotateX(0deg)  rotateY(0deg)  rotate(0deg)   scale(1.15); }
+  25%  { transform: perspective(900px) rotateX(2deg)  rotateY(-3deg) rotate(1deg)   scale(1.17); }
+  50%  { transform: perspective(900px) rotateX(-1deg) rotateY(3deg)  rotate(-1deg)  scale(1.15); }
+  75%  { transform: perspective(900px) rotateX(2deg)  rotateY(2deg)  rotate(0.5deg) scale(1.16); }
+  100% { transform: perspective(900px) rotateX(0deg)  rotateY(0deg)  rotate(0deg)   scale(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-pattern {
+    animation: none;
+  }
+}
