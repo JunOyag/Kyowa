@@ -43,11 +43,8 @@ hidden files in the same image can each use a different passphrase.
   files are encrypted — that always uses AES-CBC with a PBKDF2-SHA256
   derived key, regardless of this setting.
 - Argon2id is intentionally slow (memory-hard), which raises the cost of
-  brute-forcing the hiding pattern. It runs with a fixed salt: the app
-  stores nothing alongside the hidden data besides the image itself, so the
-  hash must be fully reproducible from the passphrase alone. This means
-  Argon2id mainly adds per-attempt computational cost here, not protection
-  against precomputed tables across different deployments of the app.
+  brute-forcing the hiding pattern. It runs with a random salt: the app
+  stores the salt alongside the hidden data besides the image itself.
 
 > **Note:** this project is a personal / educational tool. The cryptography
 > and steganography have not been independently audited; do not rely on it

@@ -22,7 +22,7 @@ class DataConv {
         if (item.encodedData !== null) {
             newBlk.setEncodedData(item.encodedData);
         }
-        if (item.decodedData != null) {
+        if (item.decodedData !== null) {
             newBlk.setDecodedData(item.decodedData);
         } else {
             if (item.flagNew) {

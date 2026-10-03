@@ -13,9 +13,9 @@ self.onmessage = async (event: MessageEvent<{ id: number; password: string }>) =
     const hash = await argon2id({
       password,
       salt: ARGON2_FIXED_SALT,
-      parallelism: 1,
-      iterations: 2,
-      memorySize: 19456, // 19 MiB
+      parallelism: 4,
+      iterations: 3,
+      memorySize: 64*1024, // 64 MiB
       hashLength: 32,
       outputType: 'binary',
     }) as Uint8Array;

@@ -53,10 +53,12 @@ body {
 }
 
 .card {
-  background: var(--color-surface);
+  /*background: var(--color-surface);*/
   color: var(--color-text);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
+
+  backdrop-filter: blur(8px);
 }
 
 code, .data {
