@@ -44,22 +44,16 @@ const PassPanel = ({ callback, initialCredentials }) => {
   };
 
   return (
-    <div className='card linePanel flexv' style={{ alignItems: 'flex-start' }}>
-      <div className='flex' style={{ flexWrap: 'wrap' }}>
-        <div className='flex'>
-          <FaKey />
-        </div>
-        <div className='flex'>
-          <select id="hashAlgo" value={selectedAlgo} onChange={handleSelectChange}>
-            <option value="SHA-256">SHA-256</option>
-            <option value="SHA-512">SHA-512</option>
-            <option value="Argon2id">Argon2id</option>
-          </select>
-        </div>
-        <div className='flex'>
-          <Password inputId="passMaster" value={passMaster} onChange={handlePassMasterChange}
-            toggleMask feedback={false} />
-        </div>
+    <div className="pass-panel">
+      <div className="pass-panel-row">
+        <FaKey />
+        <select id="hashAlgo" value={selectedAlgo} onChange={handleSelectChange}>
+          <option value="SHA-256">SHA-256</option>
+          <option value="SHA-512">SHA-512</option>
+          <option value="Argon2id">Argon2id</option>
+        </select>
+        <Password inputId="passMaster" value={passMaster} onChange={handlePassMasterChange}
+          toggleMask feedback={false} />
       </div>
       {selectedAlgo === 'Argon2id' && (
         <p className="hash-algo-hint">
